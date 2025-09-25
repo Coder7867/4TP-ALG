@@ -403,4 +403,4 @@ if strategy.position_size != 0
 if longSignal or shortSignal
     directionText = longSignal ? "Long" : "Short"
     label.new(bar_index, high, "Signal", yloc=yloc.abovebar, color=color.blue)
-    alert("40-4K Enhanced Signal: " + directionText + " - EW: Impulse Wave 3", alert.freq_once_per_bar)￼Enter
+    alert("Enhanced Signal: " + directionText + " - EW: Impulse Wave 3", alert.freq_once_per_bar)
