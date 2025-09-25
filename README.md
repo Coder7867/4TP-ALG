@@ -12,13 +12,13 @@ The **4TP-ALG Strategy** blends trend detection, Elliott Wave analysis, and mult
 
 ## Core Features
 
-- **EMA Crossover Engine** – Detects directional bias using 10/20 EMA crossovers
-- **Elliott Wave Detection** – Identifies impulse wave patterns for high-momentum setups
-- **Multi-Factor Confluence** – Combines RSI, Bollinger Bands, volume, and S/R proximity
-- **Dynamic Risk Management** – ATR-based stop-loss and target calculation
-- **Smart Position Sizing** – Adjusts trade size based on account equity and stop distance
-- **Wave-Aware Exits** – Adapts stop-loss logic based on wave context
-- **Visual Labels & Alerts** – Marks signals on chart and sends real-time alerts
+- **EMA Crossover Engine**  Detects directional bias using 10/20 EMA crossovers
+- **Elliott Wave Detection** Identifies impulse wave patterns for high-momentum setups
+- **Multi-Factor Confluence** Combines RSI, Bollinger Bands, volume, and S/R proximity
+- **Dynamic Risk Management** ATR-based stop-loss and target calculation
+- **Smart Position Sizing** Adjusts trade size based on account equity and stop distance
+- **Wave-Aware Exits** Adapts stop-loss logic based on wave context
+- **Visual Labels & Alerts** Marks signals on chart and sends real-time alerts
 
 ---
 
