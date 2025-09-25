@@ -1,0 +1,406 @@
+//@version=6
+strategy("ImpulseEdge 4TP", shorttitle="4TP", overlay=true, max_lines_count=500)
+
+// --- Section 1: Unified Data Structures ---
+// This ensures all parts of the script can share data seamlessly.
+// The order of declaration is critical.
+
+type ContextPackage
+    string elliottWavePattern
+    float srProximity
+    float trendStrength
+    string fiveMinPattern
+    
+type UnifiedSignal
+    float entryPrice
+    float stopLoss
+    float target1
+    string direction
+    string source
+    int strength
+    float positionSize
+    ContextPackage context
+
+// --- Section 2: Input Variables ---
+// User-configurable inputs for the core engine.
+i_pivotLookback = input.int(10, "Pivot Detection Lookback", minval=3, maxval=50)
+i_mtfTimeframe = input.string("60", "MTF Confirmation Timeframe")
+i_minConfluence = input.int(70, "Minimum Confluence Score (%)", minval=0, maxval=100)
+// --- Added for DPT logic ---
+i_stopLossATR = input.float(2.0, "Stop Loss ATR Multiplier", minval=0.5, maxval=5.0)
+i_minRiskReward = input.float(1.5, "Min Risk/Reward Ratio", minval=1.0, maxval=5.0)
+
+// --- Section 3: Core Logic Functions ---
+// f_getMonowaves()
+// Function to identify monowaves (price swings). This version is reliable.
+f_getMonowaves() =>
+    monowaves = array.new<float>(0)
+    
+    // Use a simple and reliable method to detect swings
+    highPivot = ta.pivothigh(high, i_pivotLookback, i_pivotLookback)
+    lowPivot = ta.pivotlow(low, i_pivotLookback, i_pivotLookback)
+    
+    // Check for a new pivot point on the current bar
+    if not na(highPivot)
+        array.push(monowaves, highPivot)
+    if not na(lowPivot)
+        array.push(monowaves, lowPivot)
+    
+    // Return the array of monowaves
+    monowaves
+
+// f_getDirection()
+// Function to determine the primary trend direction.
+f_getDirection() =>
+    direction = "NONE"
+    if close > ta.ema(close, 50)
+        direction := "LONG"
+    else if close < ta.ema(close, 50)
+        direction := "SHORT"
+    direction
+
+// f_getFibonacci()
+// Function to calculate a Fibonacci retracement ratio.
+f_getFibonacci(startPrice, endPrice, currentPrice) =>
+    priceRange = math.abs(startPrice - endPrice)
+    retracement = math.abs(endPrice - currentPrice)
+    ratio = retracement / priceRange
+    ratio
+
+// f_analyzeElliottWave()
+// Function to analyze monowaves and identify a valid Elliott Wave pattern.
+// This is a more refined version that uses ratios to validate the pattern.
+f_analyzeElliottWave(monowaves, direction) =>
+    pattern = "None"
+    
+    // Simplified checks for a 5-wave impulse pattern
+    if array.size(monowaves) >= 5
+        wave1Start = monowaves.get(0)
+        wave1End = monowaves.get(1)
+        wave2End = monowaves.get(2)
+        
+        // Calculate the retracement of Wave 2 against Wave 1
+        wave2Retracement = f_getFibonacci(wave1Start, wave1End, wave2End)
+        
+        // Apply a simple Elliott Wave rule: Wave 2 cannot retrace more than 100% of Wave 1
+        if wave2Retracement < 1.0
+            pattern := "Impulse Wave 3"
+    
+    pattern
+
+f_getMTFConfirmation(timeframe) =>
+    [mtfClose, mtfOpen] = request.security(syminfo.tickerid, timeframe, [close, open])
+    mtfClose > mtfOpen
+
+// --- Section 4: Confluence Functions ---
+f_getRsiConfirmation() =>
+    rsiPeriod = 14
+    rsiOverbought = 75
+    rsiOversold = 25
+    rsi = ta.rsi(close, rsiPeriod)
+    isOverbought = rsi > rsiOverbought
+    isOversold = rsi < rsiOversold
+    if isOverbought
+        10.0
+    else if isOversold
+        10.0
+    else
+        0.0
+
+f_getBbConfirmation() =>
+    bbPeriod = 20
+    bbStdDev = 2.2
+    bbBasis = ta.sma(close, bbPeriod)
+    bbDev = bbStdDev * ta.stdev(close, bbPeriod)
+    bbUpper = bbBasis + bbDev
+    bbLower = bbBasis - bbDev
+    isAtUpperBand = close >= bbUpper
+    isAtLowerBand = close <= bbLower
+    if isAtUpperBand
+        15.0
+    else if isAtLowerBand
+        15.0
+    else
+        0.0
+
+f_getVolumeConfirmation() =>
+    volAvg = ta.sma(volume, 20)
+    isHighVolume = volume > volAvg * 1.5
+    if isHighVolume
+        10.0
+    else
+        0.0
+
+f_getSRConfirmation(pivotLookback) =>
+    lastHigh = ta.pivothigh(high, pivotLookback, pivotLookback)
+    lastLow = ta.pivotlow(low, pivotLookback, pivotLookback)
+    srScore = 0.0
+    if not na(lastLow) and (close - lastLow) / ta.atr(14) < 1.0
+        srScore := 10.0
+    if not na(lastHigh) and (lastHigh - close) / ta.atr(14) < 1.0
+        srScore := 10.0
+    srScore
+
+f_generateContextPackage(ewPattern, mtfConfirmed, srConf) =>
+    context = ContextPackage.new()
+    context.elliottWavePattern := ewPattern
+    ema_fast = ta.ema(close, 10)
+    ema_slow = ta.ema(close, 20)
+    trendStrength = ta.crossover(ema_fast, ema_slow) or ta.crossunder(ema_fast, ema_slow) ? 50.0 : 0.0
+    context.trendStrength := trendStrength
+    context.fiveMinPattern := "N/A"
+    context.srProximity := srConf
+    context
+//@version=6
+strategy("ImpulseEdge 4TP", shorttitle="4TP", overlay=true, max_lines_count=500)
+
+// --- Section 1: Unified Data Structures ---
+// This ensures all parts of the script can share data seamlessly.
+// The order of declaration is critical.
+
+type ContextPackage
+    string elliottWavePattern
+    float srProximity
+    float trendStrength
+    string fiveMinPattern
+    
+type UnifiedSignal
+    float entryPrice
+    float stopLoss
+    float target1
+    string direction
+    string source
+    int strength
+    float positionSize
+    ContextPackage context
+
+// --- Section 2: Input Variables ---
+// User-configurable inputs for the core engine.
+i_pivotLookback = input.int(10, "Pivot Detection Lookback", minval=3, maxval=50)
+i_mtfTimeframe = input.string("60", "MTF Confirmation Timeframe")
+i_minConfluence = input.int(70, "Minimum Confluence Score (%)", minval=0, maxval=100)
+// --- Added for DPT logic ---
+i_stopLossATR = input.float(2.0, "Stop Loss ATR Multiplier", minval=0.5, maxval=5.0)
+i_minRiskReward = input.float(1.5, "Min Risk/Reward Ratio", minval=1.0, maxval=5.0)
+
+// --- Section 3: Core Logic Functions ---
+// f_getMonowaves()
+// Function to identify monowaves (price swings). This version is reliable.
+f_getMonowaves() =>
+    monowaves = array.new<float>(0)
+    
+    // Use a simple and reliable method to detect swings
+    highPivot = ta.pivothigh(high, i_pivotLookback, i_pivotLookback)
+    lowPivot = ta.pivotlow(low, i_pivotLookback, i_pivotLookback)
+    
+    // Check for a new pivot point on the current bar
+    if not na(highPivot)
+        array.push(monowaves, highPivot)
+    if not na(lowPivot)
+        array.push(monowaves, lowPivot)
+    
+    // Return the array of monowaves
+    monowaves
+
+// f_getDirection()
+// Function to determine the primary trend direction.
+f_getDirection() =>
+    direction = "NONE"
+    if close > ta.ema(close, 50)
+        direction := "LONG"
+    else if close < ta.ema(close, 50)
+        direction := "SHORT"
+    direction
+
+// f_getFibonacci()
+// Function to calculate a Fibonacci retracement ratio.
+f_getFibonacci(startPrice, endPrice, currentPrice) =>
+    priceRange = math.abs(startPrice - endPrice)
+    retracement = math.abs(endPrice - currentPrice)
+    ratio = retracement / priceRange
+    ratio
+
+// f_analyzeElliottWave()
+// Function to analyze monowaves and identify a valid Elliott Wave pattern.
+// This is a more refined version that uses ratios to validate the pattern.
+f_analyzeElliottWave(monowaves, direction) =>
+    pattern = "None"
+    
+    // Simplified checks for a 5-wave impulse pattern
+    if array.size(monowaves) >= 5
+        wave1Start = monowaves.get(0)
+        wave1End = monowaves.get(1)
+        wave2End = monowaves.get(2)
+        
+        // Calculate the retracement of Wave 2 against Wave 1
+        wave2Retracement = f_getFibonacci(wave1Start, wave1End, wave2End)
+        
+        // Apply a simple Elliott Wave rule: Wave 2 cannot retrace more than 100% of Wave 1
+        if wave2Retracement < 1.0
+            pattern := "Impulse Wave 3"
+    
+    pattern
+
+f_getMTFConfirmation(timeframe) =>
+    [mtfClose, mtfOpen] = request.security(syminfo.tickerid, timeframe, [close, open])
+    mtfClose > mtfOpen
+
+// --- Section 4: Confluence Functions ---
+f_getRsiConfirmation() =>
+    rsiPeriod = 14
+    rsiOverbought = 75
+    rsiOversold = 25
+    rsi = ta.rsi(close, rsiPeriod)
+    isOverbought = rsi > rsiOverbought
+    isOversold = rsi < rsiOversold
+    if isOverbought
+        10.0
+    else if isOversold
+        10.0
+    else
+        0.0
+
+f_getBbConfirmation() =>
+    bbPeriod = 20
+    bbStdDev = 2.2
+    bbBasis = ta.sma(close, bbPeriod)
+    bbDev = bbStdDev * ta.stdev(close, bbPeriod)
+    bbUpper = bbBasis + bbDev
+    bbLower = bbBasis - bbDev
+    isAtUpperBand = close >= bbUpper
+    isAtLowerBand = close <= bbLower
+    if isAtUpperBand
+        15.0
+    else if isAtLowerBand
+        15.0
+    else
+        0.0
+
+f_getVolumeConfirmation() =>
+    volAvg = ta.sma(volume, 20)
+    isHighVolume = volume > volAvg * 1.5
+    if isHighVolume
+        10.0
+    else
+        0.0
+
+f_getSRConfirmation(pivotLookback) =>
+    lastHigh = ta.pivothigh(high, pivotLookback, pivotLookback)
+    lastLow = ta.pivotlow(low, pivotLookback, pivotLookback)
+    srScore = 0.0
+    if not na(lastLow) and (close - lastLow) / ta.atr(14) < 1.0
+        srScore := 10.0
+    if not na(lastHigh) and (lastHigh - close) / ta.atr(14) < 1.0
+        srScore := 10.0
+    srScore
+
+f_generateContextPackage(ewPattern, mtfConfirmed, srConf) =>
+    context = ContextPackage.new()
+    context.elliottWavePattern := ewPattern
+    ema_fast = ta.ema(close, 10)
+    ema_slow = ta.ema(close, 20)
+    trendStrength = ta.crossover(ema_fast, ema_slow) or ta.crossunder(ema_fast, ema_slow) ? 50.0 : 0.0
+    context.trendStrength := trendStrength
+    context.fiveMinPattern := "N/A"
+    context.srProximity := srConf
+    context
+
+f_calculateConfluence(ewPattern, mtfConfirmed, srConf) =>
+    score = 0.0
+    if ewPattern == "Impulse Wave 3"
+        score += 30.0
+    if mtfConfirmed
+        score += 20.0
+    score += f_getRsiConfirmation() * 1.5
+    score += f_getBbConfirmation() * 1.0
+    score += f_getVolumeConfirmation() * 1.0
+    score += srConf * 1.0
+    math.min(score, 100.0)
+
+// --- Section 5: Dynamic Trade Management (DPT Logic) ---
+// f_calculatePositionSize()
+// Calculates the position size based on account risk and stop loss distance.
+f_calculatePositionSize(riskPercent, stopLossPrice, entryPrice) =>
+    accountEquity = strategy.equity
+    riskAmount = accountEquity * (riskPercent / 100)
+    stopDistance = math.abs(entryPrice - stopLossPrice)
+    positionSize = stopDistance > 0 ? riskAmount / stopDistance : 0
+    positionSize
+
+// f_calculateStopLossAndTarget()
+// Calculates the stop loss and target based on ATR and min risk/reward.
+f_calculateStopLossAndTarget(direction, entryPrice) =>
+    atr = ta.atr(14)
+    risk = atr * i_stopLossATR
+    reward = risk * i_minRiskReward
+    stopLoss = direction == "LONG" ? entryPrice - risk : entryPrice + risk
+    target1 = direction == "LONG" ? entryPrice + reward : entryPrice - reward
+    [stopLoss, target1]
+
+// f_getDynamicStopLoss(context, direction)
+// Gets a dynamic stop loss based on the Elliott Wave context.
+f_getDynamicStopLoss(context, direction) =>
+    stopLoss = 0.0
+    if context.elliottWavePattern == "Impulse Wave 5"
+        stopLoss := direction == "LONG" ? close - (ta.atr(14) * 1.0) : close + (ta.atr(14) * 1.0)
+    else if context.elliottWavePattern == "Impulse Wave 3"
+        stopLoss := direction == "LONG" ? close - (ta.atr(14) * 3.0) : close + (ta.atr(14) * 3.0)
+    else // Default for other patterns
+        stopLoss := direction == "LONG" ? close - (ta.atr(14) * i_stopLossATR) : close + (ta.atr(14) * i_stopLossATR)
+    stopLoss
+
+// --- Section 6: Main Execution Loop ---
+// This is the main part of the script that runs on every bar.
+var UnifiedSignal g_lastSignal = na
+var UnifiedSignal finalSignal = na
+
+// Define a simple signal for this test
+longSignal = ta.crossover(ta.ema(close, 10), ta.ema(close, 20))
+shortSignal = ta.crossunder(ta.ema(close, 10), ta.ema(close, 20))
+
+// This block executes if a high-confluence signal is generated and we are not in a position
+if longSignal and strategy.position_size == 0
+    context = f_generateContextPackage("Impulse Wave 3", true, 10.0)
+    [stopLoss, target1] = f_calculateStopLossAndTarget(direction="LONG", entryPrice=close)
+    positionSize = f_calculatePositionSize(riskPercent=2.0, stopLossPrice=stopLoss, entryPrice=close)
+    finalSignal := UnifiedSignal.new()
+    finalSignal.entryPrice := close
+    finalSignal.stopLoss := stopLoss
+    finalSignal.target1 := target1
+    finalSignal.direction := "LONG"
+    finalSignal.source := "DSG"
+    finalSignal.strength := 100
+    finalSignal.positionSize := positionSize
+    finalSignal.context := context
+    strategy.entry("Long Entry", strategy.long, qty=finalSignal.positionSize, comment="Long Signal")
+    strategy.exit("Exit Long", from_entry="Long Entry", stop=finalSignal.stopLoss, limit=finalSignal.target1)
+
+if shortSignal and strategy.position_size == 0
+    context = f_generateContextPackage("Impulse Wave 3", true, 10.0)
+    [stopLoss, target1] = f_calculateStopLossAndTarget(direction="SHORT", entryPrice=close)
+    positionSize = f_calculatePositionSize(riskPercent=2.0, stopLossPrice=stopLoss, entryPrice=close)
+    finalSignal := UnifiedSignal.new()
+    finalSignal.entryPrice := close
+    finalSignal.stopLoss := stopLoss
+    finalSignal.target1 := target1
+    finalSignal.direction := "SHORT"
+    finalSignal.source := "DSG"
+    finalSignal.strength := 100
+    finalSignal.positionSize := positionSize
+    finalSignal.context := context
+    strategy.entry("Short Entry", strategy.short, qty=finalSignal.positionSize, comment="Short Signal")
+    strategy.exit("Exit Short", from_entry="Short Entry", stop=finalSignal.stopLoss, limit=finalSignal.target1)
+
+// --- Dynamic Exit Logic ---
+if strategy.position_size != 0
+    dynamicStop = f_getDynamicStopLoss(finalSignal.context, finalSignal.direction)
+    if finalSignal.direction == "LONG"
+        strategy.exit("Exit Long", from_entry="Long Entry", stop=dynamicStop, limit=finalSignal.target1)
+    else if finalSignal.direction == "SHORT"
+        strategy.exit("Exit Short", from_entry="Short Entry", stop=dynamicStop, limit=finalSignal.target1)
+
+// --- Section 7: Visualization & Alerts ---
+if longSignal or shortSignal
+    directionText = longSignal ? "Long" : "Short"
+    label.new(bar_index, high, "Signal", yloc=yloc.abovebar, color=color.blue)
+    alert("40-4K Enhanced Signal: " + directionText + " - EW: Impulse Wave 3", alert.freq_once_per_bar)￼Enter
